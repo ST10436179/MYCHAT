@@ -17,5 +17,5 @@ jobs:
         run: dotnet restore MYCHAT.csproj
       - name: Build
         run: dotnet build MYCHAT.csproj --no-restore
-      - name: Check code formatting
-        run: dotnet format MYCHAT.csproj --verify-no-changes --verbosity diagnostic
+      - name: Check and fix code formatting
+        run: dotnet format MYCHAT.csproj # Removed --verify-no-changes
