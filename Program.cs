@@ -464,11 +464,12 @@ namespace EnhancedCybersecurityAdvisor
 
         private void CheckForUserInterests(string input)
         {
-            if (input.ToLower().Contains("interested in") || input.ToLower().Contains("like to learn about"))
+            string lowerInput = input.ToLower();
+            if (lowerInput.Contains("interested in") || lowerInput.Contains("like to learn about"))
             {
                 foreach (var topic in _topics.Keys)
                 {
-                    if (input.ToLower().Contains(topic))
+                    if (lowerInput.Contains(topic))
                     {
                         _userMemory["interest"] = topic;
                         DisplayBotResponse($"Great! I'll remember you're interested in {topic}.");
@@ -477,18 +478,31 @@ namespace EnhancedCybersecurityAdvisor
                 }
             }
 
-            if (input.ToLower().Contains("my name is"))
+            if (lowerInput.Contains("my name is"))
             {
-                int index = input.ToLower().IndexOf("my name is") + 11;
+                int index = lowerInput.IndexOf("my name is") + 10; // Length of "my name is"
                 if (index < input.Length)
                 {
                     string name = input.Substring(index).Trim();
+                    // Remove trailing punctuation
                     if (name.EndsWith(".") || name.EndsWith("!") || name.EndsWith(","))
                     {
                         name = name.Substring(0, name.Length - 1);
                     }
-                    _userMemory["preferred_name"] = name;
-                    DisplayBotResponse($"Got it, I'll call you {name}!");
+                    // Validate name: must be non-empty and contain at least one letter
+                    if (!string.IsNullOrWhiteSpace(name) && name.Any(char.IsLetter))
+                    {
+                        _userMemory["preferred_name"] = name;
+                        DisplayBotResponse($"Got it, I'll call you {name}!");
+                    }
+                    else
+                    {
+                        DisplayBotResponse("Sorry, I couldn't catch your name. Could you say it again, like 'my name is Alex'?");
+                    }
+                }
+                else
+                {
+                    DisplayBotResponse("Sorry, I couldn't catch your name. Could you say it again, like 'my name is Alex'?");
                 }
             }
         }
