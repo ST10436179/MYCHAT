@@ -7,327 +7,120 @@ using NAudio.Wave;
 
 namespace EnhancedCybersecurityAdvisor
 {
-    // Main Program class
-    class Program
+    // Delegate for response selection
+    public delegate string ResponseSelector(string topic);
+
+    class CyberSecurityAdvisor
     {
-        static void Main(string[] args)
+        // User profile data with expanded memory capabilities
+        private string _userName;
+        private DateTime _joinedAt;
+        private int _questionsAsked;
+        private List<string> _topicsViewed;
+        private Dictionary<string, string> _userMemory; // Expanded memory to store user preferences and information
+        private List<string> _conversationHistory; // Track conversation for context awareness
+        private string _currentTopic = string.Empty; // Track the current topic being discussed
+
+        // Audio files
+        private readonly Dictionary<string, string> _audioFiles = new Dictionary<string, string>
         {
-            // Create an instance of the chatbot and run it
-            CyberSecurityAdvisor advisor = new CyberSecurityAdvisor();
-            advisor.Start();
-        }
-    }
+            { "welcome", "Welcome.wav" },
+            { "introduction", "introduction.wav" }
+        };
 
-    // Class to store user information - I learned about object-oriented design in class!
-    class UserProfile
-    {
-        public string Name { get; set; }
-        public DateTime JoinedAt { get; set; }
-        public int QuestionsAsked { get; set; }
-        public List<string> TopicsViewed { get; set; }
-
-        // Constructor to initialize a new user profile
-        public UserProfile(string name)
+        // Sentiment analysis dictionaries
+        private readonly Dictionary<string, string> _positiveWords = new Dictionary<string, string>
         {
-            Name = name;
-            JoinedAt = DateTime.Now; // Store when the session started
-            QuestionsAsked = 0; // Start counting questions
-            TopicsViewed = new List<string>(); // Create empty list for topics
-        }
+            { "good", "I'm glad to hear that!" },
+            { "great", "That's wonderful!" },
+            { "happy", "I'm happy to help you stay secure online!" },
+            { "interested", "It's great that you're interested in cybersecurity!" },
+            { "like", "I'm glad you like this information!" },
+            { "thanks", "You're welcome! I'm here to help with any cybersecurity questions." },
+            { "thank", "You're welcome! I'm here to help with any cybersecurity questions." },
+            { "helpful", "I'm glad you find this helpful!" },
+            { "excellent", "Thank you! I aim to provide excellent cybersecurity advice." }
+        };
 
-        // Method to increase question count
-        public void IncrementQuestions()
+        private readonly Dictionary<string, string> _negativeWords = new Dictionary<string, string>
         {
-            QuestionsAsked++;
-        }
+            { "worried", "It's normal to feel concerned about cybersecurity. I'm here to help you understand how to stay safe." },
+            { "scared", "Many people feel anxious about online threats. Let me help alleviate your concerns with some practical advice." },
+            { "confused", "Cybersecurity can be confusing. Let me break it down for you in simpler terms." },
+            { "difficult", "I understand cybersecurity can seem challenging. Let's take it step by step." },
+            { "overwhelmed", "It's easy to feel overwhelmed by cybersecurity information. Let's focus on the basics first." },
+            { "frustrating", "I understand your frustration. Cybersecurity doesn't have to be complicated - let me help simplify it." },
+            { "scary", "Digital security can seem intimidating, but with a few simple practices, you can greatly improve your safety online." },
+            { "hard", "Cybersecurity doesn't have to be hard. I'll help you understand the fundamental concepts." },
+            { "afraid", "It's okay to be cautious about online security. That awareness is actually the first step to staying safe!" }
+        };
 
-        // Method to add a new topic to the viewed list (without duplicates)
-        public void AddTopicViewed(string topic)
+        // Generic collection for random responses
+        private readonly Dictionary<string, List<string>> _randomResponses = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase)
         {
-            // Only add if we haven't seen this topic before
-            if (!TopicsViewed.Contains(topic))
-            {
-                TopicsViewed.Add(topic);
-            }
-        }
+            { "greeting", new List<string> {
+                "Hello! How can I help you with cybersecurity today?",
+                "Hi there! Ready to learn about staying safe online?",
+                "Greetings! What cybersecurity topic are you interested in?",
+                "Welcome! I'm here to answer your cybersecurity questions."
+            }},
+            { "phishing", new List<string> {
+                "Always verify the sender's email address before clicking any links or downloading attachments.",
+                "Be suspicious of emails with urgent requests or threatening language - legitimate organizations don't pressure you this way.",
+                "Hover over links before clicking to see the actual URL destination. If it looks suspicious, don't click!",
+                "Banks and legitimate companies will never ask for sensitive information via email.",
+                "When in doubt about an email, contact the supposed sender through official channels to verify its authenticity."
+            }},
+            { "password", new List<string> {
+                "Use a unique password for each important account to prevent credential stuffing attacks.",
+                "Consider using a password manager to generate and store complex passwords securely.",
+                "The length of a password matters more than its complexity - aim for at least 12 characters.",
+                "Passphrases (a string of random words) are often more secure and easier to remember than complex passwords.",
+                "Enable two-factor authentication whenever possible for an additional layer of security."
+            }},
+            { "malware", new List<string> {
+                "Keep your operating system and applications updated to patch security vulnerabilities.",
+                "Only download software from official websites and app stores to reduce the risk of malware.",
+                "Be cautious of email attachments, even from people you know - their accounts could be compromised.",
+                "Use reputable antivirus software and keep it updated for the latest malware protection.",
+                "Scan files before opening them, especially if they come from unfamiliar sources."
+            }},
+            { "browsing", new List<string> {
+                "Look for HTTPS in the URL and a padlock icon to ensure the website is secure.",
+                "Use private browsing mode when using public computers to prevent storing your session data.",
+                "Clear your cookies and browsing history regularly to protect your privacy.",
+                "Consider using a VPN when connecting to public Wi-Fi networks for encrypted communications.",
+                "Be cautious about what information you share online - once it's out there, it's hard to remove."
+            }},
+            { "social_media", new List<string> {
+                "Regularly review your privacy settings on all social media platforms.",
+                "Be cautious about accepting friend or connection requests from people you don't know.",
+                "Limit the personal information you share on social media profiles.",
+                "Be aware that quizzes and games often collect your data for marketing purposes.",
+                "Use strong, unique passwords for your social media accounts and enable two-factor authentication."
+            }},
+            { "farewell", new List<string> {
+                "Stay safe online! Remember what we discussed about cybersecurity.",
+                "Thank you for chatting about cybersecurity! Keep those digital defenses strong!",
+                "It was great helping you with cybersecurity information. Remember to stay vigilant online!",
+                "Until next time, keep your passwords strong and your personal information secure!"
+            }},
+            { "unknown", new List<string> {
+                "I'm not sure I understand. Could you try rephrasing that?",
+                "That topic isn't in my cybersecurity knowledge base. Can I help you with password safety, phishing, or safe browsing instead?",
+                "I don't have information on that specific topic. Would you like to know about malware protection or data breach response?",
+                "I'm not familiar with that question. Try asking about VPNs, social media security, or other cybersecurity topics."
+            }}
+        };
 
-        // Create a summary of the session
-        public string GetSessionSummary()
-        {
-            // Calculate how long they used the program
-            TimeSpan sessionDuration = DateTime.Now - JoinedAt;
-            
-            // Build a nice summary with stats
-            return $"Session Summary for {Name}:\n" +
-                   $"- Session duration: {sessionDuration.Minutes} minutes, {sessionDuration.Seconds} seconds\n" +
-                   $"- Topics explored: {TopicsViewed.Count}\n" +
-                   $"- Questions asked: {QuestionsAsked}";
-        }
-    }
+        // Knowledge base
+        private readonly Dictionary<string, (string Name, List<string> Keywords, string MainResponse, List<string> Tips)> _topics =
+            new Dictionary<string, (string, List<string>, string, List<string>)>(StringComparer.OrdinalIgnoreCase);
 
-    // Audio Manager class to handle sound effects - this was challenging to implement!
-    class AudioManager
-    {
-        private readonly Dictionary<string, string> _audioFiles;
-
-        public AudioManager()
-        {
-            // Store the audio file names in a dictionary for easy access
-            _audioFiles = new Dictionary<string, string>
-            {
-                { "welcome", "Welcome.wav" },
-                { "introduction", "introduction.wav" },
-            };
-        }
-
-        public bool PlayAudio(string audioKey)
-        {
-            try
-            {
-                // Make sure the audio key exists
-                if (!_audioFiles.ContainsKey(audioKey))
-                {
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"[Unknown audio key: {audioKey}]");
-                    Console.ResetColor();
-                    return false;
-                }
-
-                string audioPath = _audioFiles[audioKey];
-
-                // Check if file exists before trying to play it
-                if (File.Exists(audioPath))
-                {
-                    // Used NAudio library from NuGet - nice discovery!
-                    using (var audioFile = new AudioFileReader(audioPath))
-                    using (var outputDevice = new WaveOutEvent())
-                    {
-                        outputDevice.Init(audioFile);
-                        outputDevice.Play();
-                        // Wait until playback is complete
-                        while (outputDevice.PlaybackState == PlaybackState.Playing)
-                        {
-                            Thread.Sleep(100);
-                        }
-                    }
-                    return true;
-                }
-                else
-                {
-                    // File not found warning
-                    Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.WriteLine($"[Audio file '{audioPath}' not found]");
-                    Console.ResetColor();
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                // Something went wrong with playback
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"Error playing audio: {ex.Message}");
-                Console.ResetColor();
-                return false;
-            }
-        }
-    }
-
-    // Knowledge Base class - stores all the cybersecurity info I researched
-    class KnowledgeBase
-    {
-        private readonly Dictionary<string, CyberTopic> _topics;
-
-        public KnowledgeBase()
-        {
-            // Use a case-insensitive comparison so "Password" and "password" match
-            _topics = new Dictionary<string, CyberTopic>(StringComparer.OrdinalIgnoreCase);
-            InitializeTopics(); // Load all the topics
-        }
-
-        private void InitializeTopics()
-        {
-            // Password topic - these are important concepts from my security class!
-            var passwordTopic = new CyberTopic("Password Safety");
-            passwordTopic.AddKeyword("password");
-            passwordTopic.SetMainResponse("For strong passwords: use at least 12 characters, mix uppercase, lowercase, numbers, and symbols. Never reuse passwords across accounts, and consider using a password manager.");
-            passwordTopic.AddTip("Consider using a passphrase instead of a single word. For example, 'Purple-Horse-Battery-Staple-42!' is much stronger than 'P@ssw0rd'.");
-            passwordTopic.AddTip("Enable two-factor authentication (2FA) whenever possible for an additional layer of security.");
-            _topics.Add("password", passwordTopic);
-
-            // Phishing topic - learned about this from recent news articles
-            var phishingTopic = new CyberTopic("Phishing Prevention");
-            phishingTopic.AddKeyword("phishing");
-            phishingTopic.AddKeyword("scam");
-            phishingTopic.AddKeyword("email");
-            phishingTopic.SetMainResponse("Phishing attempts trick you into revealing sensitive information. Always verify the sender's email address, don't click suspicious links, and never provide personal information unless you're certain of the recipient's identity.");
-            phishingTopic.AddTip("Hover over links before clicking to see the actual URL destination.");
-            phishingTopic.AddTip("Be wary of urgent requests or threats that create pressure to act quickly.");
-            _topics.Add("phishing", phishingTopic);
-
-            // Safe browsing topic
-            var browsingTopic = new CyberTopic("Safe Browsing");
-            browsingTopic.AddKeyword("browsing");
-            browsingTopic.AddKeyword("browser");
-            browsingTopic.AddKeyword("internet");
-            browsingTopic.AddKeyword("web");
-            browsingTopic.SetMainResponse("For safe browsing: keep your browser updated, use HTTPS websites, be careful when downloading files, don't use public Wi-Fi for sensitive transactions, and consider using a VPN for additional protection.");
-            browsingTopic.AddTip("Clear your cookies and browsing history regularly to protect your privacy.");
-            browsingTopic.AddTip("Use browser extensions like ad blockers and privacy tools to enhance security.");
-            _topics.Add("browsing", browsingTopic);
-
-            // Malware topic - super important in today's world!
-            var malwareTopic = new CyberTopic("Malware Protection");
-            malwareTopic.AddKeyword("malware");
-            malwareTopic.AddKeyword("virus");
-            malwareTopic.AddKeyword("trojan");
-            malwareTopic.AddKeyword("ransomware");
-            malwareTopic.SetMainResponse("To protect against malware: keep your software updated, use reputable antivirus software, don't download from untrusted sources, and be cautious of email attachments.");
-            malwareTopic.AddTip("Regularly scan your system with anti-malware software.");
-            malwareTopic.AddTip("Be especially cautious of files with extensions like .exe, .bat, or .scr.");
-            _topics.Add("malware", malwareTopic);
-
-            // Data breach topic - this happened to my friend recently
-            var dataBreachTopic = new CyberTopic("Data Breach Response");
-            dataBreachTopic.AddKeyword("data breach");
-            dataBreachTopic.AddKeyword("breach");
-            dataBreachTopic.AddKeyword("hack");
-            dataBreachTopic.AddKeyword("leaked");
-            dataBreachTopic.SetMainResponse("If you're affected by a data breach: change your passwords immediately, monitor your accounts for suspicious activity, and consider freezing your credit if personal information was compromised.");
-            dataBreachTopic.AddTip("Use services like Have I Been Pwned to check if your data has been compromised.");
-            dataBreachTopic.AddTip("Consider using a credit monitoring service after a major breach.");
-            _topics.Add("data breach", dataBreachTopic);
-
-            // VPN topic - I use this myself when traveling
-            var vpnTopic = new CyberTopic("VPN Usage");
-            vpnTopic.AddKeyword("vpn");
-            vpnTopic.AddKeyword("virtual private network");
-            vpnTopic.SetMainResponse("A VPN (Virtual Private Network) encrypts your internet connection, helping protect your privacy and security, especially on public Wi-Fi networks. It can also mask your IP address and location.");
-            vpnTopic.AddTip("Free VPNs often collect and sell your data - consider paying for a reputable service.");
-            vpnTopic.AddTip("Even with a VPN, practice good security habits as they don't make you completely anonymous.");
-            _topics.Add("vpn", vpnTopic);
-
-            // Social media topic - added this for my final project
-            var socialMediaTopic = new CyberTopic("Social Media Security");
-            socialMediaTopic.AddKeyword("social media");
-            socialMediaTopic.AddKeyword("facebook");
-            socialMediaTopic.AddKeyword("twitter");
-            socialMediaTopic.AddKeyword("instagram");
-            socialMediaTopic.AddKeyword("tiktok");
-            socialMediaTopic.SetMainResponse("Protect your social media accounts by using strong passwords, enabling two-factor authentication, reviewing privacy settings regularly, and being careful about what personal information you share publicly.");
-            socialMediaTopic.AddTip("Regularly review and remove third-party app access to your social media accounts.");
-            socialMediaTopic.AddTip("Be wary of quizzes and games that request access to your profile - they may collect personal data.");
-            _topics.Add("social media", socialMediaTopic);
-        }
-
-        public bool TryGetResponse(string userInput, out string response, out string topicName)
-        {
-            response = string.Empty;
-            topicName = string.Empty;
-            userInput = userInput.ToLower();
-
-            // Handle basic conversational inputs - makes it friendlier!
-            if (userInput.Contains("hello") || userInput.Contains("hi") || userInput == "hey")
-            {
-                response = "Hello there! How can I help you with cybersecurity today?";
-                return true;
-            }
-            if (userInput.Contains("how are you"))
-            {
-                response = "I'm functioning perfectly, thank you for asking! Ready to help you stay safe online.";
-                return true;
-            }
-            if (userInput.Contains("what is your purpose") || userInput.Contains("what do you do"))
-            {
-                response = "My purpose is to help raise awareness about cybersecurity practices and answer your questions about staying safe online.";
-                return true;
-            }
-            if (userInput.Contains("what can i ask you") || userInput.Contains("what can you do"))
-            {
-                response = "You can ask me about password safety, phishing, safe browsing, malware protection, VPNs, social media security, and general cybersecurity best practices!";
-                return true;
-            }
-
-            // Find matching topics based on keywords
-            foreach (var topic in _topics.Values)
-            {
-                if (topic.KeywordMatch(userInput))
-                {
-                    response = topic.GetFullResponse();
-                    topicName = topic.Name;
-                    return true;
-                }
-            }
-
-            // No matches found
-            return false;
-        }
-
-        // Return list of all available topics
-        public List<string> GetAllTopicNames()
-        {
-            return _topics.Values.Select(t => t.Name).ToList();
-        }
-    }
-
-    // Class for individual cybersecurity topics
-    class CyberTopic
-    {
-        public string Name { get; private set; }
-        private List<string> Keywords { get; set; }
-        private string MainResponse { get; set; }
-        private List<string> Tips { get; set; }
-
-        // Constructor
-        public CyberTopic(string name)
-        {
-            Name = name;
-            Keywords = new List<string>();
-            Tips = new List<string>();
-        }
-
-        // Add a keyword that triggers this topic
-        public void AddKeyword(string keyword)
-        {
-            Keywords.Add(keyword.ToLower());
-        }
-
-        // Set the main explanation text
-        public void SetMainResponse(string response)
-        {
-            MainResponse = response;
-        }
-
-        // Add additional tips
-        public void AddTip(string tip)
-        {
-            Tips.Add(tip);
-        }
-
-        // Check if any keyword is in the input text
-        public bool KeywordMatch(string input)
-        {
-            return Keywords.Any(k => input.Contains(k));
-        }
-
-        // Get complete response with tips
-        public string GetFullResponse()
-        {
-            string response = MainResponse + "\n\nAdditional tips:";
-            foreach (var tip in Tips)
-            {
-                response += $"\n• {tip}";
-            }
-            return response;
-        }
-    }
-
-    // User Interface class - I spent a lot of time making this look good!
-    class UserInterface
-    {
-        // ASCII art logo I created for the program - this took me forever to get right
+        // ASCII art logo
         private readonly string _logoArt = @"
-   _____      _                 _____                      _ _         
-  / ____|    | |               / ____|                    (_) |        
+   _____      _                 _____                      _ _        
+  / ____|    | |               / ____|                    (_) |       
  | |     _   | |__   ___ _ __| (___   ___  ___ _   _ _ __ _| |_ _   _ 
  | |    | | | | '_ \ / _ \ '__|\___ \ / _ \/ __| | | | '__| | __| | | |
  | |____| |_| | |_) |  __/ |  ____) |  __/ (__| |_| | |  | | |_| |_| |
@@ -341,26 +134,182 @@ namespace EnhancedCybersecurityAdvisor
        /_/   \_\__,_| \_/ |_|___/\___/|_|   
 ";
 
-        // Display the logo with a cool loading animation
-        public void DisplayLogo()
+        // Constructor
+        public CyberSecurityAdvisor()
+        {
+            _questionsAsked = 0;
+            _topicsViewed = new List<string>();
+            _userMemory = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _conversationHistory = new List<string>();
+            InitializeTopics();
+        }
+
+        private void InitializeTopics()
+        {
+            // Password topic
+            _topics.Add("password", (
+                Name: "Password Safety",
+                Keywords: new List<string> { "password", "passwords", "pwd", "pass", "passphrase" },
+                MainResponse: "For strong passwords: use at least 12 characters, mix uppercase, lowercase, numbers, and symbols. Never reuse passwords across accounts, and consider using a password manager.",
+                Tips: new List<string>
+                {
+                    "Consider using a passphrase instead of a single word. For example, 'Purple-Horse-Battery-Staple-42!' is much stronger than 'P@ssw0rd'.",
+                    "Enable two-factor authentication (2FA) whenever possible for an additional layer of security.",
+                    "Change your passwords regularly, especially for high-value accounts like banking and email.",
+                    "Use a trusted password manager to generate and store complex passwords securely."
+                }
+            ));
+
+            // Phishing topic
+            _topics.Add("phishing", (
+                Name: "Phishing Prevention",
+                Keywords: new List<string> { "phishing", "scam", "scams", "email", "fake", "fraud", "suspicious" },
+                MainResponse: "Phishing attempts trick you into revealing sensitive information. Always verify the sender's email address, don't click suspicious links, and never provide personal information unless you're certain of the recipient's identity.",
+                Tips: new List<string>
+                {
+                    "Hover over links before clicking to see the actual URL destination.",
+                    "Be wary of urgent requests or threats that create pressure to act quickly.",
+                    "Look for spelling and grammar errors, which are common in phishing attempts.",
+                    "If an offer seems too good to be true, it probably is."
+                }
+            ));
+
+            // Safe browsing topic
+            _topics.Add("browsing", (
+                Name: "Safe Browsing",
+                Keywords: new List<string> { "browsing", "browser", "internet", "web", "website", "surf", "online" },
+                MainResponse: "For safe browsing: keep your browser updated, use HTTPS websites, be careful when downloading files, don't use public Wi-Fi for sensitive transactions, and consider using a VPN for additional protection.",
+                Tips: new List<string>
+                {
+                    "Clear your cookies and browsing history regularly to protect your privacy.",
+                    "Use browser extensions like ad blockers and privacy tools to enhance security.",
+                    "Check for HTTPS and a padlock icon in the address bar before entering sensitive information.",
+                    "Consider using a privacy-focused browser for additional protection."
+                }
+            ));
+
+            // Malware topic
+            _topics.Add("malware", (
+                Name: "Malware Protection",
+                Keywords: new List<string> { "malware", "virus", "trojan", "ransomware", "spyware", "adware", "infection" },
+                MainResponse: "To protect against malware: keep your software updated, use reputable antivirus software, don't download from untrusted sources, and be cautious of email attachments.",
+                Tips: new List<string>
+                {
+                    "Regularly scan your system with anti-malware software.",
+                    "Be especially cautious of files with extensions like .exe, .bat, or .scr.",
+                    "Keep your operating system and applications updated with the latest security patches.",
+                    "Back up your important data regularly to protect against ransomware attacks."
+                }
+            ));
+
+            // Data breach topic
+            _topics.Add("data breach", (
+                Name: "Data Breach Response",
+                Keywords: new List<string> { "data breach", "breach", "hack", "leaked", "stolen", "compromised", "identity theft" },
+                MainResponse: "If you're affected by a data breach: change your passwords immediately, monitor your accounts for suspicious activity, and consider freezing your credit if personal information was compromised.",
+                Tips: new List<string>
+                {
+                    "Use services like Have I Been Pwned to check if your data has been compromised.",
+                    "Consider using a credit monitoring service after a major breach.",
+                    "Be extra vigilant about phishing attempts following a data breach announcement.",
+                    "Report suspicious activity on your accounts immediately to the service provider."
+                }
+            ));
+
+            // VPN topic
+            _topics.Add("vpn", (
+                Name: "VPN Usage",
+                Keywords: new List<string> { "vpn", "virtual private network", "proxy", "encrypted connection" },
+                MainResponse: "A VPN (Virtual Private Network) encrypts your internet connection, helping protect your privacy and security, especially on public Wi-Fi networks. It can also mask your IP address and location.",
+                Tips: new List<string>
+                {
+                    "Free VPNs often collect and sell your data - consider paying for a reputable service.",
+                    "Even with a VPN, practice good security habits as they don't make you completely anonymous.",
+                    "Choose a VPN provider with a strict no-logs policy for better privacy.",
+                    "Use a VPN when connecting to public Wi-Fi networks to protect your data from eavesdroppers."
+                }
+            ));
+
+            // Social media topic
+            _topics.Add("social media", (
+                Name: "Social Media Security",
+                Keywords: new List<string> { "social media", "facebook", "twitter", "instagram", "tiktok", "linkedin", "snapchat" },
+                MainResponse: "Protect your social media accounts by using strong passwords, enabling two-factor authentication, reviewing privacy settings regularly, and being careful about what personal information you share publicly.",
+                Tips: new List<string>
+                {
+                    "Regularly review and remove third-party app access to your social media accounts.",
+                    "Be wary of quizzes and games that request access to your profile - they may collect personal data.",
+                    "Think twice before sharing personal details like your full birth date, address, or phone number.",
+                    "Be cautious about accepting friend or connection requests from people you don't know."
+                }
+            ));
+
+            // Privacy topic
+            _topics.Add("privacy", (
+                Name: "Online Privacy",
+                Keywords: new List<string> { "privacy", "tracking", "cookies", "data collection", "anonymous", "incognito" },
+                MainResponse: "Protecting your online privacy involves controlling what information you share, using privacy-focused tools and services, and understanding how companies collect and use your data.",
+                Tips: new List<string>
+                {
+                    "Regularly review privacy settings on websites and apps you use.",
+                    "Consider using privacy-focused browsers and search engines.",
+                    "Read privacy policies before using new services, especially regarding data collection practices.",
+                    "Use cookie blockers and ad blockers to reduce tracking across websites."
+                }
+            ));
+
+            // Public Wi-Fi topic
+            _topics.Add("public wifi", (
+                Name: "Public Wi-Fi Safety",
+                Keywords: new List<string> { "public wifi", "hotspot", "free wifi", "wireless", "cafe wifi", "hotel wifi" },
+                MainResponse: "Public Wi-Fi networks are convenient but risky. Use a VPN, avoid accessing sensitive accounts, verify network names, and turn off file sharing and automatic connections for better security.",
+                Tips: new List<string>
+                {
+                    "Always use HTTPS websites when on public Wi-Fi.",
+                    "Avoid online banking or shopping on public networks unless using a VPN.",
+                    "Disable automatic connections to prevent your device from joining unknown networks.",
+                    "Consider using your mobile data instead of public Wi-Fi for sensitive activities."
+                }
+            ));
+        }
+
+        // Main program start
+        public void Start()
+        {
+            DisplayLogo();
+            PlayAudio("welcome");
+            DisplayWelcomeMessage();
+            
+            _userName = GetUserName();
+            _joinedAt = DateTime.Now;
+            _userMemory.Add("name", _userName);
+            
+            PlayAudio("introduction");
+            DisplayTypingEffect($"\nNice to meet you, {_userName}! I'm your cybersecurity advisor.");
+            DisplayTypingEffect("You can ask me about various cybersecurity topics or type 'help' to see all available topics.");
+            DisplayTypingEffect("Type 'exit', 'quit', or 'bye' when you're ready to end our session.");
+            Console.WriteLine();
+
+            RunConversationLoop();
+        }
+
+        private void DisplayLogo()
         {
             Console.Clear();
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine(_logoArt);
             Console.ResetColor();
 
-            // Loading animation to make it look more professional
             Console.Write("Initializing system");
             for (int i = 0; i < 6; i++)
             {
                 Console.Write(".");
-                Thread.Sleep(250);  // Added small delay between dots
+                Thread.Sleep(250);
             }
             Console.WriteLine("\n");
         }
 
-        // Welcome message with pretty box
-        public void DisplayWelcomeMessage()
+        private void DisplayWelcomeMessage()
         {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine("╔════════════════════════════════════════════════════════════════════╗");
@@ -370,12 +319,9 @@ namespace EnhancedCybersecurityAdvisor
             Console.ResetColor();
         }
 
-        // Get user's name with validation
-        public string GetUserName()
+        private string GetUserName()
         {
             string name = string.Empty;
-            
-            // Keep asking until we get a valid name
             do
             {
                 Console.Write("\nBefore we begin, please enter your name: ");
@@ -394,20 +340,17 @@ namespace EnhancedCybersecurityAdvisor
             return name;
         }
 
-        // Cool typing effect I learned about - makes it look like computer is thinking
-        public void DisplayTypingEffect(string text)
+        private void DisplayTypingEffect(string text)
         {
-            // This shows text character by character for a typing effect
             foreach (char c in text)
             {
                 Console.Write(c);
-                Thread.Sleep(15); // Made it a bit faster than my first attempt
+                Thread.Sleep(15);
             }
             Console.WriteLine();
         }
 
-        // Display a message from the advisor with typing effect
-        public void DisplayBotResponse(string message, string userName)
+        private void DisplayBotResponse(string message)
         {
             Console.ForegroundColor = ConsoleColor.Green;
             Console.Write("\nAdvisor> ");
@@ -415,32 +358,28 @@ namespace EnhancedCybersecurityAdvisor
             Console.ResetColor();
         }
 
-        // Display the user's prompt with their name
-        public void DisplayUserPrompt(string userName)
+        private void DisplayUserPrompt()
         {
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.Write($"{userName}> ");
+            Console.Write($"{_userName}> ");
             Console.ForegroundColor = ConsoleColor.White;
         }
 
-        // Display error messages in red
-        public void DisplayErrorMessage(string message)
+        private void DisplayErrorMessage(string message)
         {
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine(message);
             Console.ResetColor();
         }
 
-        // Display warning messages in yellow
-        public void DisplayWarningMessage(string message)
+        private void DisplayWarningMessage(string message)
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine(message);
             Console.ResetColor();
         }
 
-        // Show available topics menu
-        public void DisplayHelpMenu(List<string> topics)
+        private void DisplayHelpMenu()
         {
             Console.ForegroundColor = ConsoleColor.Magenta;
             Console.WriteLine("\n╔════════════════════════════════════════════════╗");
@@ -448,80 +387,258 @@ namespace EnhancedCybersecurityAdvisor
             Console.WriteLine("╚════════════════════════════════════════════════╝");
             Console.ResetColor();
 
-            // List all topics with bullet points
             Console.ForegroundColor = ConsoleColor.Yellow;
-            foreach (var topic in topics)
+            foreach (var topic in _topics.Values)
             {
-                Console.WriteLine($"• {topic}");
+                Console.WriteLine($"• {topic.Name}");
             }
             Console.ResetColor();
             
             Console.WriteLine("\nType a topic name or use a related keyword to learn more.");
             Console.WriteLine("Type 'exit', 'quit', or 'bye' to end the session.");
         }
-    }
 
-    // Main class that brings everything together - this was challenging to structure!
-    class CyberSecurityAdvisor
-    {
-        private readonly UserInterface _ui;
-        private readonly KnowledgeBase _knowledgeBase;
-        private readonly AudioManager _audioManager;
-        private UserProfile _userProfile;
-
-        // Constructor to set up all components
-        public CyberSecurityAdvisor()
+        private bool PlayAudio(string audioKey)
         {
-            _ui = new UserInterface();
-            _knowledgeBase = new KnowledgeBase();
-            _audioManager = new AudioManager();
+            try
+            {
+                if (!_audioFiles.ContainsKey(audioKey))
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"[Unknown audio key: {audioKey}]");
+                    Console.ResetColor();
+                    return false;
+                }
+
+                string audioPath = _audioFiles[audioKey];
+                if (File.Exists(audioPath))
+                {
+                    using (var audioFile = new AudioFileReader(audioPath))
+                    using (var outputDevice = new WaveOutEvent())
+                    {
+                        outputDevice.Init(audioFile);
+                        outputDevice.Play();
+                        while (outputDevice.PlaybackState == PlaybackState.Playing)
+                        {
+                            Thread.Sleep(100);
+                        }
+                    }
+                    return true;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine($"[Audio file '{audioPath}' not found]");
+                    Console.ResetColor();
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Error playing audio: {ex.Message}");
+                Console.ResetColor();
+                return false;
+            }
         }
 
-        // Start the program
-        public void Start()
+        // Randomly select a response from the collection for variety
+        private string GetRandomResponse(string topic)
         {
-            _ui.DisplayLogo();
-            _audioManager.PlayAudio("welcome");
-            _ui.DisplayWelcomeMessage();
-            
-            // Get user's name and create profile
-            string userName = _ui.GetUserName();
-            _userProfile = new UserProfile(userName);
-            
-            // Play introduction sound and show welcome message
-            _audioManager.PlayAudio("introduction");
-            _ui.DisplayTypingEffect($"\nNice to meet you, {userName}! I'm your cybersecurity advisor.");
-            _ui.DisplayTypingEffect("You can ask me about various cybersecurity topics or type 'help' to see all available topics.");
-            _ui.DisplayTypingEffect("Type 'exit', 'quit', or 'bye' when you're ready to end our session.");
-            Console.WriteLine();
-
-            // Start the main conversation loop
-            RunConversationLoop();
+            if (_randomResponses.ContainsKey(topic))
+            {
+                Random random = new Random();
+                int index = random.Next(0, _randomResponses[topic].Count);
+                return _randomResponses[topic][index];
+            }
+            return "I don't have specific information on that topic.";
         }
 
-        // Main conversation loop
+        // Advanced response method using sentiment detection
+        private string GetAdvancedResponse(string userInput)
+        {
+            userInput = userInput.ToLower();
+            
+            // Store conversation for context
+            _conversationHistory.Add(userInput);
+            
+            // Check for sentiment in the user input
+            foreach (var word in _positiveWords.Keys)
+            {
+                if (userInput.Contains(word))
+                {
+                    return _positiveWords[word];
+                }
+            }
+            
+            foreach (var word in _negativeWords.Keys)
+            {
+                if (userInput.Contains(word))
+                {
+                    return _negativeWords[word];
+                }
+            }
+            
+            // Handle "more" requests (follow-up questions)
+            if (userInput.Contains("more") && !string.IsNullOrEmpty(_currentTopic))
+            {
+                foreach (var topic in _topics)
+                {
+                    if (topic.Key.Equals(_currentTopic, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Use the ResponseSelector delegate for random responses
+                        ResponseSelector selector = GetRandomResponse;
+                        return selector(topic.Key.Replace(" ", "_"));
+                    }
+                }
+            }
+            
+            // Check for memory-related questions
+            if (userInput.Contains("what am i interested in") || userInput.Contains("what do i like"))
+            {
+                if (_userMemory.ContainsKey("interest"))
+                {
+                    return $"You previously mentioned that you're interested in {_userMemory["interest"]}. Would you like to learn more about it?";
+                }
+            }
+            
+            // Check for topic interests and store in memory
+            if (userInput.Contains("interested in") || userInput.Contains("like to learn about"))
+            {
+                foreach (var topic in _topics)
+                {
+                    foreach (var keyword in topic.Value.Keywords)
+                    {
+                        if (userInput.Contains(keyword))
+                        {
+                            // Store user interest in memory
+                            _userMemory["interest"] = topic.Value.Name.ToLower();
+                            return $"Great! I'll remember that you're interested in {topic.Value.Name.ToLower()}. It's an important aspect of cybersecurity.";
+                        }
+                    }
+                }
+            }
+            
+            return null; // Return null if no advanced response is found
+        }
+
+        private bool TryGetResponse(string userInput, out string response, out string topicName)
+        {
+            response = string.Empty;
+            topicName = string.Empty;
+            userInput = userInput.ToLower();
+
+            // Try to get an advanced response first (sentiment, memory, follow-up)
+            string advancedResponse = GetAdvancedResponse(userInput);
+            if (!string.IsNullOrEmpty(advancedResponse))
+            {
+                response = advancedResponse;
+                return true;
+            }
+
+            // Basic greetings using random responses
+            if (userInput.Contains("hello") || userInput.Contains("hi") || userInput == "hey")
+            {
+                response = GetRandomResponse("greeting");
+                return true;
+            }
+            
+            if (userInput.Contains("how are you"))
+            {
+                response = "I'm functioning perfectly, thank you for asking! Ready to help you stay safe online.";
+                return true;
+            }
+            
+            if (userInput.Contains("what is your purpose") || userInput.Contains("what do you do"))
+            {
+                response = "My purpose is to help raise awareness about cybersecurity practices and answer your questions about staying safe online.";
+                return true;
+            }
+            
+            if (userInput.Contains("what can i ask you") || userInput.Contains("what can you do"))
+            {
+                response = "You can ask me about password safety, phishing, safe browsing, malware protection, VPNs, social media security, and general cybersecurity best practices!";
+                return true;
+            }
+
+            // Look for topic matches
+            foreach (var topic in _topics)
+            {
+                if (topic.Value.Keywords.Any(k => userInput.Contains(k)))
+                {
+                    // Store the current topic for context and follow-up questions
+                    _currentTopic = topic.Key;
+                    
+                    // Personalize response if user previously showed interest in this topic
+                    string personalizedIntro = string.Empty;
+                    if (_userMemory.ContainsKey("interest") && _userMemory["interest"].Equals(topic.Value.Name.ToLower()))
+                    {
+                        personalizedIntro = $"Since you mentioned you're interested in {topic.Value.Name.ToLower()}, here's some helpful information: ";
+                    }
+                    
+                    response = $"{personalizedIntro}{topic.Value.MainResponse}\n\nAdditional tips:";
+                    foreach (var tip in topic.Value.Tips)
+                    {
+                        response += $"\n• {tip}";
+                    }
+                    topicName = topic.Value.Name;
+                    return true;
+                }
+            }
+
+            // Handle unknown inputs
+            response = GetRandomResponse("unknown");
+            return true;
+        }
+
+        private void IncrementQuestions()
+        {
+            _questionsAsked++;
+        }
+
+        private void AddTopicViewed(string topic)
+        {
+            if (!_topicsViewed.Contains(topic))
+            {
+                _topicsViewed.Add(topic);
+            }
+        }
+
+        private string GetSessionSummary()
+        {
+            TimeSpan sessionDuration = DateTime.Now - _joinedAt;
+            
+            string interestSummary = string.Empty;
+            if (_userMemory.ContainsKey("interest"))
+            {
+                interestSummary = $"\n- Your main interest: {_userMemory["interest"]}";
+            }
+            
+            return $"Session Summary for {_userName}:\n" +
+                   $"- Session duration: {sessionDuration.Minutes} minutes, {sessionDuration.Seconds} seconds\n" +
+                   $"- Topics explored: {_topicsViewed.Count}\n" +
+                   $"- Questions asked: {_questionsAsked}" +
+                   interestSummary;
+        }
+
         private void RunConversationLoop()
         {
             bool continueChat = true;
 
             while (continueChat)
             {
-                // Display prompt and get input
-                _ui.DisplayUserPrompt(_userProfile.Name);
+                DisplayUserPrompt();
                 string userInput = Console.ReadLine().Trim();
                 Console.ResetColor();
 
-                // Check for empty input
                 if (string.IsNullOrEmpty(userInput))
                 {
-                    _ui.DisplayWarningMessage("I didn't catch that. Could you please type something?");
+                    DisplayWarningMessage("I didn't catch that. Could you please type something?");
                     continue;
                 }
 
-                // Convert to lowercase for easier comparison
                 userInput = userInput.ToLower();
 
-                // Check for exit commands
                 if (userInput == "exit" || userInput == "quit" || userInput == "bye")
                 {
                     HandleExit();
@@ -529,47 +646,50 @@ namespace EnhancedCybersecurityAdvisor
                     continue;
                 }
 
-                // Check for help command
                 if (userInput == "help")
                 {
-                    _ui.DisplayHelpMenu(_knowledgeBase.GetAllTopicNames());
+                    DisplayHelpMenu();
                     continue;
                 }
 
-                // Try to find a response in our knowledge base
-                if (_knowledgeBase.TryGetResponse(userInput, out string response, out string topicName))
+                if (TryGetResponse(userInput, out string response, out string topicName))
                 {
-                    _ui.DisplayBotResponse(response, _userProfile.Name);
-                    _userProfile.IncrementQuestions();
-                    
-                    // Record that this topic was viewed
+                    DisplayBotResponse(response);
+                    IncrementQuestions();
                     if (!string.IsNullOrEmpty(topicName))
                     {
-                        _userProfile.AddTopicViewed(topicName);
+                        AddTopicViewed(topicName);
                     }
                 }
                 else
                 {
-                    // No matching topic found
-                    _ui.DisplayBotResponse($"I'm not sure how to help with that, {_userProfile.Name}. " +
-                        "Try asking about a specific cybersecurity topic or type 'help' to see available topics.", _userProfile.Name);
+                    // This should never happen now because TryGetResponse always returns true
+                    // with the unknown response handler, but keeping as a fallback
+                    DisplayBotResponse($"I'm not sure how to help with that, {_userName}. " +
+                        "Try asking about a specific cybersecurity topic or type 'help' to see available topics.");
                 }
 
                 Console.WriteLine();
             }
         }
 
-        // Handle exit from the program
         private void HandleExit()
         {
-            _ui.DisplayBotResponse("Thank you for using the Enhanced Cybersecurity Advisor!", _userProfile.Name);
-            _ui.DisplayTypingEffect(_userProfile.GetSessionSummary());
-            _ui.DisplayTypingEffect("\nStay safe online and remember to practice good cybersecurity habits!");
+            // Use random farewell message
+            DisplayBotResponse(GetRandomResponse("farewell"));
+            DisplayTypingEffect(GetSessionSummary());
+            DisplayTypingEffect("\nStay safe online and remember to practice good cybersecurity habits!");
             
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine("\nPress any key to exit...");
             Console.ResetColor();
             Console.ReadKey();
+        }
+
+        static void Main(string[] args)
+        {
+            var advisor = new CyberSecurityAdvisor();
+            advisor.Start();
         }
     }
 }

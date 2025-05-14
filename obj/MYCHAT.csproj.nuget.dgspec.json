@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Admin\\Documents\\chat\\MYCHAT.csproj": {}
+    "C:\\Users\\Admin\\Videos\\chat\\MYCHAT.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Admin\\Documents\\chat\\MYCHAT.csproj": {
+    "C:\\Users\\Admin\\Videos\\chat\\MYCHAT.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Admin\\Documents\\chat\\MYCHAT.csproj",
+        "projectUniqueName": "C:\\Users\\Admin\\Videos\\chat\\MYCHAT.csproj",
         "projectName": "MYCHAT",
-        "projectPath": "C:\\Users\\Admin\\Documents\\chat\\MYCHAT.csproj",
+        "projectPath": "C:\\Users\\Admin\\Videos\\chat\\MYCHAT.csproj",
         "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Admin\\Documents\\chat\\obj\\",
+        "outputPath": "C:\\Users\\Admin\\Videos\\chat\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -38,7 +38,7 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.200"
+        "SdkAnalysisLevel": "9.0.300"
       },
       "frameworks": {
         "net9.0": {
@@ -65,7 +65,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.202/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.300/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
