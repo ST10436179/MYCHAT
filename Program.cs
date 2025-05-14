@@ -7,19 +7,21 @@ using NAudio.Wave;
 
 namespace EnhancedCybersecurityAdvisor
 {
-    // Delegate for response selection
-    public delegate string ResponseSelector(string topic);
+    // Delegates for response selection and sentiment modification
+    public delegate bool ResponseSelector(string input, out string response, out string topicName);
+    public delegate string SentimentResponseModifier(string baseResponse, string sentiment, string originalInput);
 
     class CyberSecurityAdvisor
     {
-        // User profile data with expanded memory capabilities
+        // User profile data
         private string _userName;
         private DateTime _joinedAt;
         private int _questionsAsked;
         private List<string> _topicsViewed;
-        private Dictionary<string, string> _userMemory; // Expanded memory to store user preferences and information
-        private List<string> _conversationHistory; // Track conversation for context awareness
-        private string _currentTopic = string.Empty; // Track the current topic being discussed
+        private Dictionary<string, string> _userMemory; // Store preferences
+        private List<string> _conversationHistory; // Track conversation
+        private string _currentTopic; // Current conversation topic
+        private Random _random; // For random responses
 
         // Audio files
         private readonly Dictionary<string, string> _audioFiles = new Dictionary<string, string>
@@ -28,34 +30,28 @@ namespace EnhancedCybersecurityAdvisor
             { "introduction", "introduction.wav" }
         };
 
-        // Sentiment analysis dictionaries
-        private readonly Dictionary<string, string> _positiveWords = new Dictionary<string, string>
+        // Knowledge base with multiple responses per topic
+        private readonly Dictionary<string, (string Name, List<string> Keywords, List<string> MainResponses, List<string> Tips)> _topics =
+            new Dictionary<string, (string Name, List<string> Keywords, List<string> MainResponses, List<string> Tips)>(StringComparer.OrdinalIgnoreCase);
+
+        // Sentiment detection
+        private readonly Dictionary<string, string> _sentimentKeywords = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            { "good", "I'm glad to hear that!" },
-            { "great", "That's wonderful!" },
-            { "happy", "I'm happy to help you stay secure online!" },
-            { "interested", "It's great that you're interested in cybersecurity!" },
-            { "like", "I'm glad you like this information!" },
-            { "thanks", "You're welcome! I'm here to help with any cybersecurity questions." },
-            { "thank", "You're welcome! I'm here to help with any cybersecurity questions." },
-            { "helpful", "I'm glad you find this helpful!" },
-            { "excellent", "Thank you! I aim to provide excellent cybersecurity advice." }
+            { "worried", "worried" }, { "concerned", "worried" }, { "anxious", "worried" }, { "scared", "worried" },
+            { "curious", "curious" }, { "interested", "curious" }, { "tell me more", "curious" },
+            { "frustrated", "frustrated" }, { "annoyed", "frustrated" }, { "upset", "frustrated" },
+            { "happy", "positive" }, { "glad", "positive" }, { "thanks", "positive" }, { "thank", "positive" }
         };
 
-        private readonly Dictionary<string, string> _negativeWords = new Dictionary<string, string>
+        private readonly Dictionary<string, string> _sentimentResponses = new Dictionary<string, string>
         {
-            { "worried", "It's normal to feel concerned about cybersecurity. I'm here to help you understand how to stay safe." },
-            { "scared", "Many people feel anxious about online threats. Let me help alleviate your concerns with some practical advice." },
-            { "confused", "Cybersecurity can be confusing. Let me break it down for you in simpler terms." },
-            { "difficult", "I understand cybersecurity can seem challenging. Let's take it step by step." },
-            { "overwhelmed", "It's easy to feel overwhelmed by cybersecurity information. Let's focus on the basics first." },
-            { "frustrating", "I understand your frustration. Cybersecurity doesn't have to be complicated - let me help simplify it." },
-            { "scary", "Digital security can seem intimidating, but with a few simple practices, you can greatly improve your safety online." },
-            { "hard", "Cybersecurity doesn't have to be hard. I'll help you understand the fundamental concepts." },
-            { "afraid", "It's okay to be cautious about online security. That awareness is actually the first step to staying safe!" }
+            { "worried", "It's understandable to feel {0} about cybersecurity. Let's take it step by step: {1}" },
+            { "curious", "I'm glad you're curious! Here's some info: {0}" },
+            { "frustrated", "I hear your frustration. Let's clarify this: {0}" },
+            { "positive", "Awesome to hear your enthusiasm! {0}" }
         };
 
-        // Generic collection for random responses
+        // Random responses for non-topic interactions
         private readonly Dictionary<string, List<string>> _randomResponses = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase)
         {
             { "greeting", new List<string> {
@@ -64,41 +60,6 @@ namespace EnhancedCybersecurityAdvisor
                 "Greetings! What cybersecurity topic are you interested in?",
                 "Welcome! I'm here to answer your cybersecurity questions."
             }},
-            { "phishing", new List<string> {
-                "Always verify the sender's email address before clicking any links or downloading attachments.",
-                "Be suspicious of emails with urgent requests or threatening language - legitimate organizations don't pressure you this way.",
-                "Hover over links before clicking to see the actual URL destination. If it looks suspicious, don't click!",
-                "Banks and legitimate companies will never ask for sensitive information via email.",
-                "When in doubt about an email, contact the supposed sender through official channels to verify its authenticity."
-            }},
-            { "password", new List<string> {
-                "Use a unique password for each important account to prevent credential stuffing attacks.",
-                "Consider using a password manager to generate and store complex passwords securely.",
-                "The length of a password matters more than its complexity - aim for at least 12 characters.",
-                "Passphrases (a string of random words) are often more secure and easier to remember than complex passwords.",
-                "Enable two-factor authentication whenever possible for an additional layer of security."
-            }},
-            { "malware", new List<string> {
-                "Keep your operating system and applications updated to patch security vulnerabilities.",
-                "Only download software from official websites and app stores to reduce the risk of malware.",
-                "Be cautious of email attachments, even from people you know - their accounts could be compromised.",
-                "Use reputable antivirus software and keep it updated for the latest malware protection.",
-                "Scan files before opening them, especially if they come from unfamiliar sources."
-            }},
-            { "browsing", new List<string> {
-                "Look for HTTPS in the URL and a padlock icon to ensure the website is secure.",
-                "Use private browsing mode when using public computers to prevent storing your session data.",
-                "Clear your cookies and browsing history regularly to protect your privacy.",
-                "Consider using a VPN when connecting to public Wi-Fi networks for encrypted communications.",
-                "Be cautious about what information you share online - once it's out there, it's hard to remove."
-            }},
-            { "social_media", new List<string> {
-                "Regularly review your privacy settings on all social media platforms.",
-                "Be cautious about accepting friend or connection requests from people you don't know.",
-                "Limit the personal information you share on social media profiles.",
-                "Be aware that quizzes and games often collect your data for marketing purposes.",
-                "Use strong, unique passwords for your social media accounts and enable two-factor authentication."
-            }},
             { "farewell", new List<string> {
                 "Stay safe online! Remember what we discussed about cybersecurity.",
                 "Thank you for chatting about cybersecurity! Keep those digital defenses strong!",
@@ -106,21 +67,17 @@ namespace EnhancedCybersecurityAdvisor
                 "Until next time, keep your passwords strong and your personal information secure!"
             }},
             { "unknown", new List<string> {
-                "I'm not sure I understand. Could you try rephrasing that?",
-                "That topic isn't in my cybersecurity knowledge base. Can I help you with password safety, phishing, or safe browsing instead?",
-                "I don't have information on that specific topic. Would you like to know about malware protection or data breach response?",
-                "I'm not familiar with that question. Try asking about VPNs, social media security, or other cybersecurity topics."
+                "I'm not sure I understand. Could you try rephrasing?",
+                "That topic isn't in my knowledge base. Can I help with password safety, phishing, or privacy?",
+                "I don't have info on that. Would you like to know about malware or VPNs?",
+                "I'm not familiar with that. Try asking about social media security or public Wi-Fi."
             }}
         };
 
-        // Knowledge base
-        private readonly Dictionary<string, (string Name, List<string> Keywords, string MainResponse, List<string> Tips)> _topics =
-            new Dictionary<string, (string, List<string>, string, List<string>)>(StringComparer.OrdinalIgnoreCase);
-
         // ASCII art logo
         private readonly string _logoArt = @"
-   _____      _                 _____                      _ _        
-  / ____|    | |               / ____|                    (_) |       
+   _____      _                 _____                      _ _         
+  / ____|    | |               / ____|                    (_) |        
  | |     _   | |__   ___ _ __| (___   ___  ___ _   _ _ __ _| |_ _   _ 
  | |    | | | | '_ \ / _ \ '__|\___ \ / _ \/ __| | | | '__| | __| | | |
  | |____| |_| | |_) |  __/ |  ____) |  __/ (__| |_| | |  | | |_| |_| |
@@ -134,13 +91,14 @@ namespace EnhancedCybersecurityAdvisor
        /_/   \_\__,_| \_/ |_|___/\___/|_|   
 ";
 
-        // Constructor
         public CyberSecurityAdvisor()
         {
             _questionsAsked = 0;
             _topicsViewed = new List<string>();
-            _userMemory = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _userMemory = new Dictionary<string, string>();
             _conversationHistory = new List<string>();
+            _currentTopic = string.Empty;
+            _random = new Random();
             InitializeTopics();
         }
 
@@ -149,131 +107,166 @@ namespace EnhancedCybersecurityAdvisor
             // Password topic
             _topics.Add("password", (
                 Name: "Password Safety",
-                Keywords: new List<string> { "password", "passwords", "pwd", "pass", "passphrase" },
-                MainResponse: "For strong passwords: use at least 12 characters, mix uppercase, lowercase, numbers, and symbols. Never reuse passwords across accounts, and consider using a password manager.",
+                Keywords: new List<string> { "password", "passphrase", "pwd", "pass" },
+                MainResponses: new List<string>
+                {
+                    "For strong passwords: use at least 12 characters, mix uppercase, lowercase, numbers, and symbols. Never reuse passwords across accounts, and consider using a password manager.",
+                    "Create unique passwords with a mix of characters. Password managers can help you keep track of them securely.",
+                    "Strong passwords are key to security. Use long, random combinations and avoid reusing them."
+                },
                 Tips: new List<string>
                 {
-                    "Consider using a passphrase instead of a single word. For example, 'Purple-Horse-Battery-Staple-42!' is much stronger than 'P@ssw0rd'.",
-                    "Enable two-factor authentication (2FA) whenever possible for an additional layer of security.",
-                    "Change your passwords regularly, especially for high-value accounts like banking and email.",
-                    "Use a trusted password manager to generate and store complex passwords securely."
+                    "Consider using a passphrase like 'Purple-Horse-Battery-Staple-42!' for better security.",
+                    "Enable two-factor authentication (2FA) for an extra layer of protection.",
+                    "Change passwords regularly, especially for high-value accounts."
                 }
             ));
 
             // Phishing topic
             _topics.Add("phishing", (
                 Name: "Phishing Prevention",
-                Keywords: new List<string> { "phishing", "scam", "scams", "email", "fake", "fraud", "suspicious" },
-                MainResponse: "Phishing attempts trick you into revealing sensitive information. Always verify the sender's email address, don't click suspicious links, and never provide personal information unless you're certain of the recipient's identity.",
+                Keywords: new List<string> { "phishing", "scam", "email", "fraud", "suspicious" },
+                MainResponses: new List<string>
+                {
+                    "Phishing attempts trick you into revealing sensitive information. Always verify the sender's email address, don't click suspicious links, and never share personal details.",
+                    "Be cautious of emails asking for personal information. Scammers often pose as trusted organizations.",
+                    "Phishing emails can look real. Check the sender and avoid clicking links in unsolicited messages."
+                },
                 Tips: new List<string>
                 {
-                    "Hover over links before clicking to see the actual URL destination.",
-                    "Be wary of urgent requests or threats that create pressure to act quickly.",
-                    "Look for spelling and grammar errors, which are common in phishing attempts.",
-                    "If an offer seems too good to be true, it probably is."
+                    "Hover over links to see the actual URL before clicking.",
+                    "Look for urgent language or threats, as these are common phishing tactics.",
+                    "Check for spelling or grammar errors, common in phishing attempts."
                 }
             ));
 
             // Safe browsing topic
             _topics.Add("browsing", (
                 Name: "Safe Browsing",
-                Keywords: new List<string> { "browsing", "browser", "internet", "web", "website", "surf", "online" },
-                MainResponse: "For safe browsing: keep your browser updated, use HTTPS websites, be careful when downloading files, don't use public Wi-Fi for sensitive transactions, and consider using a VPN for additional protection.",
+                Keywords: new List<string> { "browsing", "browser", "internet", "web", "online" },
+                MainResponses: new List<string>
+                {
+                    "For safe browsing: keep your browser updated, use HTTPS websites, be careful when downloading files, and avoid public Wi-Fi for sensitive tasks.",
+                    "Stay secure online by ensuring websites use HTTPS and keeping your browser up to date.",
+                    "Safe browsing means avoiding risky downloads and using secure connections like HTTPS."
+                },
                 Tips: new List<string>
                 {
-                    "Clear your cookies and browsing history regularly to protect your privacy.",
-                    "Use browser extensions like ad blockers and privacy tools to enhance security.",
-                    "Check for HTTPS and a padlock icon in the address bar before entering sensitive information.",
-                    "Consider using a privacy-focused browser for additional protection."
+                    "Clear cookies and history regularly to protect your privacy.",
+                    "Use ad blockers and privacy extensions to enhance security.",
+                    "Check for HTTPS and a padlock icon before entering sensitive data."
                 }
             ));
 
             // Malware topic
             _topics.Add("malware", (
                 Name: "Malware Protection",
-                Keywords: new List<string> { "malware", "virus", "trojan", "ransomware", "spyware", "adware", "infection" },
-                MainResponse: "To protect against malware: keep your software updated, use reputable antivirus software, don't download from untrusted sources, and be cautious of email attachments.",
+                Keywords: new List<string> { "malware", "virus", "trojan", "ransomware", "spyware" },
+                MainResponses: new List<string>
+                {
+                    "To protect against malware: keep software updated, use reputable antivirus software, and avoid downloads from untrusted sources.",
+                    "Malware can harm your device. Stay safe with antivirus software and careful downloading.",
+                    "Prevent malware by updating your system and avoiding suspicious email attachments."
+                },
                 Tips: new List<string>
                 {
-                    "Regularly scan your system with anti-malware software.",
-                    "Be especially cautious of files with extensions like .exe, .bat, or .scr.",
-                    "Keep your operating system and applications updated with the latest security patches.",
-                    "Back up your important data regularly to protect against ransomware attacks."
+                    "Run regular antivirus scans to catch potential threats.",
+                    "Be cautious of files with extensions like .exe or .bat.",
+                    "Back up data regularly to protect against ransomware."
                 }
             ));
 
             // Data breach topic
             _topics.Add("data breach", (
                 Name: "Data Breach Response",
-                Keywords: new List<string> { "data breach", "breach", "hack", "leaked", "stolen", "compromised", "identity theft" },
-                MainResponse: "If you're affected by a data breach: change your passwords immediately, monitor your accounts for suspicious activity, and consider freezing your credit if personal information was compromised.",
+                Keywords: new List<string> { "data breach", "breach", "hack", "leaked", "compromised" },
+                MainResponses: new List<string>
+                {
+                    "If affected by a data breach: change passwords immediately, monitor accounts, and consider freezing your credit.",
+                    "A data breach can expose your info. Act fast by updating passwords and checking accounts.",
+                    "Post-breach, secure your accounts with new passwords and monitor for unusual activity."
+                },
                 Tips: new List<string>
                 {
-                    "Use services like Have I Been Pwned to check if your data has been compromised.",
-                    "Consider using a credit monitoring service after a major breach.",
-                    "Be extra vigilant about phishing attempts following a data breach announcement.",
-                    "Report suspicious activity on your accounts immediately to the service provider."
+                    "Check if your email was compromised using Have I Been Pwned.",
+                    "Consider a credit monitoring service after a breach.",
+                    "Be vigilant about phishing attempts after a breach."
                 }
             ));
 
             // VPN topic
             _topics.Add("vpn", (
                 Name: "VPN Usage",
-                Keywords: new List<string> { "vpn", "virtual private network", "proxy", "encrypted connection" },
-                MainResponse: "A VPN (Virtual Private Network) encrypts your internet connection, helping protect your privacy and security, especially on public Wi-Fi networks. It can also mask your IP address and location.",
+                Keywords: new List<string> { "vpn", "virtual private network", "proxy" },
+                MainResponses: new List<string>
+                {
+                    "A VPN encrypts your internet connection, protecting your privacy, especially on public Wi-Fi.",
+                    "Use a VPN to secure your data and hide your IP address on unsecured networks.",
+                    "VPNs enhance privacy by encrypting your connection, ideal for public Wi-Fi."
+                },
                 Tips: new List<string>
                 {
-                    "Free VPNs often collect and sell your data - consider paying for a reputable service.",
-                    "Even with a VPN, practice good security habits as they don't make you completely anonymous.",
-                    "Choose a VPN provider with a strict no-logs policy for better privacy.",
-                    "Use a VPN when connecting to public Wi-Fi networks to protect your data from eavesdroppers."
+                    "Choose a reputable paid VPN, as free ones may log your data.",
+                    "A VPN isn't full anonymity—combine it with good security habits.",
+                    "Select a VPN with a no-logs policy for better privacy."
                 }
             ));
 
             // Social media topic
             _topics.Add("social media", (
                 Name: "Social Media Security",
-                Keywords: new List<string> { "social media", "facebook", "twitter", "instagram", "tiktok", "linkedin", "snapchat" },
-                MainResponse: "Protect your social media accounts by using strong passwords, enabling two-factor authentication, reviewing privacy settings regularly, and being careful about what personal information you share publicly.",
+                Keywords: new List<string> { "social media", "facebook", "twitter", "instagram", "tiktok", "linkedin" },
+                MainResponses: new List<string>
+                {
+                    "Protect social media accounts with strong passwords, 2FA, and regular privacy setting reviews.",
+                    "Secure your social media by using unique passwords and enabling two-factor authentication.",
+                    "Keep your social media safe with strong security settings and careful sharing."
+                },
                 Tips: new List<string>
                 {
-                    "Regularly review and remove third-party app access to your social media accounts.",
-                    "Be wary of quizzes and games that request access to your profile - they may collect personal data.",
-                    "Think twice before sharing personal details like your full birth date, address, or phone number.",
-                    "Be cautious about accepting friend or connection requests from people you don't know."
+                    "Review third-party app access to your accounts regularly.",
+                    "Avoid quizzes or games that request profile access—they may collect data.",
+                    "Limit personal details like birth dates or addresses."
                 }
             ));
 
             // Privacy topic
             _topics.Add("privacy", (
                 Name: "Online Privacy",
-                Keywords: new List<string> { "privacy", "tracking", "cookies", "data collection", "anonymous", "incognito" },
-                MainResponse: "Protecting your online privacy involves controlling what information you share, using privacy-focused tools and services, and understanding how companies collect and use your data.",
+                Keywords: new List<string> { "privacy", "tracking", "cookies", "data protection" },
+                MainResponses: new List<string>
+                {
+                    "Protect your online privacy by reviewing app permissions and using privacy-focused tools.",
+                    "Online privacy starts with controlling what data you share and who can access it.",
+                    "Stay private online by limiting data sharing and checking privacy settings."
+                },
                 Tips: new List<string>
                 {
-                    "Regularly review privacy settings on websites and apps you use.",
-                    "Consider using privacy-focused browsers and search engines.",
-                    "Read privacy policies before using new services, especially regarding data collection practices.",
-                    "Use cookie blockers and ad blockers to reduce tracking across websites."
+                    "Use privacy-focused browsers like Firefox or search engines like DuckDuckGo.",
+                    "Regularly clear tracking cookies to reduce data collection.",
+                    "Read privacy policies to understand data usage."
                 }
             ));
 
             // Public Wi-Fi topic
             _topics.Add("public wifi", (
                 Name: "Public Wi-Fi Safety",
-                Keywords: new List<string> { "public wifi", "hotspot", "free wifi", "wireless", "cafe wifi", "hotel wifi" },
-                MainResponse: "Public Wi-Fi networks are convenient but risky. Use a VPN, avoid accessing sensitive accounts, verify network names, and turn off file sharing and automatic connections for better security.",
+                Keywords: new List<string> { "public wifi", "hotspot", "free wifi", "wireless" },
+                MainResponses: new List<string>
+                {
+                    "Public Wi-Fi is risky. Use a VPN, avoid sensitive accounts, and verify network names.",
+                    "Secure public Wi-Fi usage with a VPN and by sticking to HTTPS websites.",
+                    "Protect yourself on public Wi-Fi by disabling auto-connect and using a VPN."
+                },
                 Tips: new List<string>
                 {
-                    "Always use HTTPS websites when on public Wi-Fi.",
-                    "Avoid online banking or shopping on public networks unless using a VPN.",
-                    "Disable automatic connections to prevent your device from joining unknown networks.",
-                    "Consider using your mobile data instead of public Wi-Fi for sensitive activities."
+                    "Always use HTTPS websites on public Wi-Fi.",
+                    "Avoid banking or shopping on public networks without a VPN.",
+                    "Turn off file sharing when using public Wi-Fi."
                 }
             ));
         }
 
-        // Main program start
         public void Start()
         {
             DisplayLogo();
@@ -282,12 +275,12 @@ namespace EnhancedCybersecurityAdvisor
             
             _userName = GetUserName();
             _joinedAt = DateTime.Now;
-            _userMemory.Add("name", _userName);
+            _userMemory["name"] = _userName;
             
             PlayAudio("introduction");
             DisplayTypingEffect($"\nNice to meet you, {_userName}! I'm your cybersecurity advisor.");
-            DisplayTypingEffect("You can ask me about various cybersecurity topics or type 'help' to see all available topics.");
-            DisplayTypingEffect("Type 'exit', 'quit', or 'bye' when you're ready to end our session.");
+            DisplayTypingEffect("You can ask about cybersecurity topics like passwords, scams, or privacy, or type 'help' to see all topics.");
+            DisplayTypingEffect("Type 'exit', 'quit', or 'bye' to end our session.");
             Console.WriteLine();
 
             RunConversationLoop();
@@ -390,7 +383,7 @@ namespace EnhancedCybersecurityAdvisor
             Console.ForegroundColor = ConsoleColor.Yellow;
             foreach (var topic in _topics.Values)
             {
-                Console.WriteLine($"• {topic.Name}");
+                Console.WriteLine($"• {topic.Name} (Keywords: {string.Join(", ", topic.Keywords)})");
             }
             Console.ResetColor();
             
@@ -442,84 +435,78 @@ namespace EnhancedCybersecurityAdvisor
             }
         }
 
-        // Randomly select a response from the collection for variety
-        private string GetRandomResponse(string topic)
+        private string DetectSentiment(string input)
         {
-            if (_randomResponses.ContainsKey(topic))
+            foreach (var sentiment in _sentimentKeywords)
             {
-                Random random = new Random();
-                int index = random.Next(0, _randomResponses[topic].Count);
-                return _randomResponses[topic][index];
+                if (input.ToLower().Contains(sentiment.Key))
+                {
+                    return sentiment.Value;
+                }
             }
-            return "I don't have specific information on that topic.";
+            return string.Empty;
         }
 
-        // Advanced response method using sentiment detection
-        private string GetAdvancedResponse(string userInput)
+        private string ModifyResponseBySentiment(string baseResponse, string sentiment, string originalInput)
         {
-            userInput = userInput.ToLower();
-            
-            // Store conversation for context
-            _conversationHistory.Add(userInput);
-            
-            // Check for sentiment in the user input
-            foreach (var word in _positiveWords.Keys)
+            if (_sentimentResponses.ContainsKey(sentiment))
             {
-                if (userInput.Contains(word))
+                if (sentiment == "worried")
                 {
-                    return _positiveWords[word];
+                    string worryTerm = _sentimentKeywords.Keys
+                        .FirstOrDefault(k => sentiment == "worried" && originalInput.ToLower().Contains(k)) ?? "worried";
+                    return string.Format(_sentimentResponses[sentiment], worryTerm, baseResponse);
                 }
+                return string.Format(_sentimentResponses[sentiment], baseResponse);
             }
-            
-            foreach (var word in _negativeWords.Keys)
+            return baseResponse;
+        }
+
+        private void CheckForUserInterests(string input)
+        {
+            if (input.ToLower().Contains("interested in") || input.ToLower().Contains("like to learn about"))
             {
-                if (userInput.Contains(word))
+                foreach (var topic in _topics.Keys)
                 {
-                    return _negativeWords[word];
-                }
-            }
-            
-            // Handle "more" requests (follow-up questions)
-            if (userInput.Contains("more") && !string.IsNullOrEmpty(_currentTopic))
-            {
-                foreach (var topic in _topics)
-                {
-                    if (topic.Key.Equals(_currentTopic, StringComparison.OrdinalIgnoreCase))
+                    if (input.ToLower().Contains(topic))
                     {
-                        // Use the ResponseSelector delegate for random responses
-                        ResponseSelector selector = GetRandomResponse;
-                        return selector(topic.Key.Replace(" ", "_"));
+                        _userMemory["interest"] = topic;
+                        DisplayBotResponse($"Great! I'll remember you're interested in {topic}.");
+                        break;
                     }
                 }
             }
-            
-            // Check for memory-related questions
-            if (userInput.Contains("what am i interested in") || userInput.Contains("what do i like"))
+
+            if (input.ToLower().Contains("my name is"))
             {
-                if (_userMemory.ContainsKey("interest"))
+                int index = input.ToLower().IndexOf("my name is") + 11;
+                if (index < input.Length)
                 {
-                    return $"You previously mentioned that you're interested in {_userMemory["interest"]}. Would you like to learn more about it?";
-                }
-            }
-            
-            // Check for topic interests and store in memory
-            if (userInput.Contains("interested in") || userInput.Contains("like to learn about"))
-            {
-                foreach (var topic in _topics)
-                {
-                    foreach (var keyword in topic.Value.Keywords)
+                    string name = input.Substring(index).Trim();
+                    if (name.EndsWith(".") || name.EndsWith("!") || name.EndsWith(","))
                     {
-                        if (userInput.Contains(keyword))
-                        {
-                            // Store user interest in memory
-                            _userMemory["interest"] = topic.Value.Name.ToLower();
-                            return $"Great! I'll remember that you're interested in {topic.Value.Name.ToLower()}. It's an important aspect of cybersecurity.";
-                        }
+                        name = name.Substring(0, name.Length - 1);
                     }
+                    _userMemory["preferred_name"] = name;
+                    DisplayBotResponse($"Got it, I'll call you {name}!");
                 }
             }
-            
-            return null; // Return null if no advanced response is found
+        }
+
+        private string IncorporateMemory(string response)
+        {
+            if (_userMemory.ContainsKey("interest") && _random.Next(3) == 0)
+            {
+                string interest = _userMemory["interest"];
+                return $"As someone interested in {interest}, you might like this: {response}";
+            }
+
+            if (_userMemory.ContainsKey("preferred_name") && _random.Next(4) == 0)
+            {
+                return $"{_userMemory["preferred_name"]}, {response}";
+            }
+
+            return response;
         }
 
         private bool TryGetResponse(string userInput, out string response, out string topicName)
@@ -528,66 +515,82 @@ namespace EnhancedCybersecurityAdvisor
             topicName = string.Empty;
             userInput = userInput.ToLower();
 
-            // Try to get an advanced response first (sentiment, memory, follow-up)
-            string advancedResponse = GetAdvancedResponse(userInput);
-            if (!string.IsNullOrEmpty(advancedResponse))
-            {
-                response = advancedResponse;
-                return true;
-            }
-
-            // Basic greetings using random responses
+            // Basic conversational inputs
             if (userInput.Contains("hello") || userInput.Contains("hi") || userInput == "hey")
             {
-                response = GetRandomResponse("greeting");
+                response = _randomResponses["greeting"][_random.Next(_randomResponses["greeting"].Count)];
                 return true;
             }
-            
             if (userInput.Contains("how are you"))
             {
                 response = "I'm functioning perfectly, thank you for asking! Ready to help you stay safe online.";
                 return true;
             }
-            
             if (userInput.Contains("what is your purpose") || userInput.Contains("what do you do"))
             {
                 response = "My purpose is to help raise awareness about cybersecurity practices and answer your questions about staying safe online.";
                 return true;
             }
-            
             if (userInput.Contains("what can i ask you") || userInput.Contains("what can you do"))
             {
-                response = "You can ask me about password safety, phishing, safe browsing, malware protection, VPNs, social media security, and general cybersecurity best practices!";
+                response = "You can ask me about password safety, phishing, safe browsing, malware protection, VPNs, social media security, privacy, public Wi-Fi, and more!";
                 return true;
             }
 
-            // Look for topic matches
-            foreach (var topic in _topics)
+            // Handle memory-related questions
+            if (userInput.Contains("what am i interested in") || userInput.Contains("what do i like"))
             {
-                if (topic.Value.Keywords.Any(k => userInput.Contains(k)))
+                if (_userMemory.ContainsKey("interest"))
                 {
-                    // Store the current topic for context and follow-up questions
-                    _currentTopic = topic.Key;
-                    
-                    // Personalize response if user previously showed interest in this topic
-                    string personalizedIntro = string.Empty;
-                    if (_userMemory.ContainsKey("interest") && _userMemory["interest"].Equals(topic.Value.Name.ToLower()))
-                    {
-                        personalizedIntro = $"Since you mentioned you're interested in {topic.Value.Name.ToLower()}, here's some helpful information: ";
-                    }
-                    
-                    response = $"{personalizedIntro}{topic.Value.MainResponse}\n\nAdditional tips:";
-                    foreach (var tip in topic.Value.Tips)
-                    {
-                        response += $"\n• {tip}";
-                    }
-                    topicName = topic.Value.Name;
+                    response = $"You mentioned you're interested in {_userMemory["interest"]}. Want to learn more about it?";
                     return true;
                 }
+                response = "I don't know your interests yet! Tell me what you're interested in.";
+                return true;
+            }
+
+            // Handle follow-up questions
+            if (!string.IsNullOrEmpty(_currentTopic) &&
+                (userInput.Contains("more") || userInput.Contains("explain") || userInput.Contains("tell me") || userInput.Contains("details")))
+            {
+                var topic = _topics[_currentTopic];
+                response = $"More on {topic.Name}: {topic.MainResponses[_random.Next(topic.MainResponses.Count)]}\n\nAdditional tips:";
+                foreach (var tip in topic.Tips)
+                {
+                    response += $"\n• {tip}";
+                }
+                topicName = topic.Name;
+                return true;
+            }
+
+            // Delegate for response selection
+            ResponseSelector selector = (string input, out string resp, out string tName) =>
+            {
+                resp = string.Empty;
+                tName = string.Empty;
+                foreach (var topic in _topics)
+                {
+                    if (topic.Value.Keywords.Any(k => input.Contains(k)))
+                    {
+                        resp = topic.Value.MainResponses[_random.Next(topic.Value.MainResponses.Count)] + "\n\nAdditional tips:";
+                        foreach (var tip in topic.Value.Tips)
+                        {
+                            resp += $"\n• {tip}";
+                        }
+                        tName = topic.Value.Name;
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            if (selector(userInput, out response, out topicName))
+            {
+                return true;
             }
 
             // Handle unknown inputs
-            response = GetRandomResponse("unknown");
+            response = _randomResponses["unknown"][_random.Next(_randomResponses["unknown"].Count)];
             return true;
         }
 
@@ -607,23 +610,19 @@ namespace EnhancedCybersecurityAdvisor
         private string GetSessionSummary()
         {
             TimeSpan sessionDuration = DateTime.Now - _joinedAt;
-            
-            string interestSummary = string.Empty;
-            if (_userMemory.ContainsKey("interest"))
-            {
-                interestSummary = $"\n- Your main interest: {_userMemory["interest"]}";
-            }
-            
+            string interestSummary = _userMemory.ContainsKey("interest") 
+                ? $"\n- Your main interest: {_userMemory["interest"]}" 
+                : "";
             return $"Session Summary for {_userName}:\n" +
                    $"- Session duration: {sessionDuration.Minutes} minutes, {sessionDuration.Seconds} seconds\n" +
                    $"- Topics explored: {_topicsViewed.Count}\n" +
-                   $"- Questions asked: {_questionsAsked}" +
-                   interestSummary;
+                   $"- Questions asked: {_questionsAsked}" + interestSummary;
         }
 
         private void RunConversationLoop()
         {
             bool continueChat = true;
+            int invalidInputCount = 0;
 
             while (continueChat)
             {
@@ -634,9 +633,23 @@ namespace EnhancedCybersecurityAdvisor
                 if (string.IsNullOrEmpty(userInput))
                 {
                     DisplayWarningMessage("I didn't catch that. Could you please type something?");
+                    invalidInputCount++;
+                    if (invalidInputCount >= 3)
+                    {
+                        DisplayWarningMessage("Try typing 'help' to see topics or 'exit' to quit.");
+                    }
                     continue;
                 }
 
+                if (userInput.Length > 200)
+                {
+                    DisplayWarningMessage("Input is too long. Please keep it under 200 characters.");
+                    invalidInputCount++;
+                    continue;
+                }
+
+                invalidInputCount = 0;
+                _conversationHistory.Add(userInput);
                 userInput = userInput.ToLower();
 
                 if (userInput == "exit" || userInput == "quit" || userInput == "bye")
@@ -652,21 +665,29 @@ namespace EnhancedCybersecurityAdvisor
                     continue;
                 }
 
-                if (TryGetResponse(userInput, out string response, out string topicName))
+                // Check for user interests
+                CheckForUserInterests(userInput);
+
+                // Detect sentiment
+                string sentiment = DetectSentiment(userInput);
+
+                // Process input using delegate
+                ResponseSelector processInput = TryGetResponse;
+                if (processInput(userInput, out string response, out string topicName))
                 {
+                    _currentTopic = topicName;
+                    if (!string.IsNullOrEmpty(sentiment))
+                    {
+                        SentimentResponseModifier modifier = ModifyResponseBySentiment;
+                        response = modifier(response, sentiment, userInput);
+                    }
+                    response = IncorporateMemory(response);
                     DisplayBotResponse(response);
                     IncrementQuestions();
                     if (!string.IsNullOrEmpty(topicName))
                     {
                         AddTopicViewed(topicName);
                     }
-                }
-                else
-                {
-                    // This should never happen now because TryGetResponse always returns true
-                    // with the unknown response handler, but keeping as a fallback
-                    DisplayBotResponse($"I'm not sure how to help with that, {_userName}. " +
-                        "Try asking about a specific cybersecurity topic or type 'help' to see available topics.");
                 }
 
                 Console.WriteLine();
@@ -675,8 +696,7 @@ namespace EnhancedCybersecurityAdvisor
 
         private void HandleExit()
         {
-            // Use random farewell message
-            DisplayBotResponse(GetRandomResponse("farewell"));
+            DisplayBotResponse(_randomResponses["farewell"][_random.Next(_randomResponses["farewell"].Count)]);
             DisplayTypingEffect(GetSessionSummary());
             DisplayTypingEffect("\nStay safe online and remember to practice good cybersecurity habits!");
             
